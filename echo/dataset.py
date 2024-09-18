@@ -12,6 +12,7 @@ import openai
 import tiktoken
 import google.generativeai as google_ai
 from tqdm import tqdm
+import typing_extensions as typing
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -49,6 +50,9 @@ class Record:
             "document": self.document,
         }
 
+class Summary(typing.TypedDict):
+    summary: str
+
 class DatasetGenerator:
     """Generates a dataset for the MSM vector database."""
 
@@ -64,7 +68,6 @@ class DatasetGenerator:
         self._embedding_model = openai_embedding_model
         self._embedding_dimensions = dimensions
         self._encoding = tiktoken.encoding_for_model(self._embedding_model)
-
         self._client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
     def generate(self, directory_path: Path | str) -> None:
@@ -96,7 +99,7 @@ class DatasetGenerator:
 
         # Generate embeddings for new documents
         for doc in tqdm(new_docs):
-            self._logger.info(f"Generating summaries for document: {doc}")
+            self._logger.info(f"Generating summaries for document: %", doc)
             summaries = self._generate_summaries(current_docs_map[doc])
 
             for summary in tqdm(summaries, leave=False):
@@ -142,7 +145,7 @@ class DatasetGenerator:
             [self._summary_prompt, summary_pdf],
             generation_config=google_ai.GenerationConfig(
                 response_mime_type="application/json",
-                response_schema=List[dict],
+                response_schema=list[Summary],
             ),
             request_options={"timeout": 120}
         )
