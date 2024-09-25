@@ -17,10 +17,12 @@ import typing_extensions as typing
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
+
 # Type hint for summary dict structure
 @dataclass
 class Metadata:
     """Represents metadata for the dataset."""
+
     date: str
     dimensions: int
     embedding_model: str
@@ -32,9 +34,11 @@ class Metadata:
             "embedding_model": self.embedding_model,
         }
 
+
 @dataclass
 class Record:
     """Represents a single record in the dataset."""
+
     id: int
     vector: List[float]
     text: str
@@ -50,15 +54,20 @@ class Record:
             "document": self.document,
         }
 
+
 class Summary(typing.TypedDict):
     summary: str
+
 
 class DatasetGenerator:
     """Generates a dataset for the MSM vector database."""
 
-    def __init__(self, google_summary_model: str = "gemini-1.5-flash-latest",
-                 openai_embedding_model: str = "text-embedding-3-small",
-                 dimensions: int = 1024) -> None:
+    def __init__(
+        self,
+        google_summary_model: str = "gemini-1.5-flash-latest",
+        openai_embedding_model: str = "text-embedding-3-small",
+        dimensions: int = 1024,
+    ) -> None:
         self._logger = logging.getLogger(__name__)
 
         # Configure APIs
@@ -89,8 +98,11 @@ class DatasetGenerator:
         current_docs = set(current_docs_map.keys())
 
         new_dataset: List[Record] = []
-        if (old_metadata and old_metadata["dimensions"] == self._embedding_dimensions
-                and old_metadata["embedding_model"] == self._embedding_model):
+        if (
+            old_metadata
+            and old_metadata["dimensions"] == self._embedding_dimensions
+            and old_metadata["embedding_model"] == self._embedding_model
+        ):
             common_docs = current_docs.intersection(old_docs)
             new_dataset.extend(record for record in old_dataset if record.document in common_docs)
             new_docs = current_docs - old_docs
@@ -147,7 +159,7 @@ class DatasetGenerator:
                 response_mime_type="application/json",
                 response_schema=list[Summary],
             ),
-            request_options={"timeout": 120}
+            request_options={"timeout": 120},
         )
 
         google_ai.delete_file(summary_pdf)
@@ -175,7 +187,7 @@ class DatasetGenerator:
             dimensions=dimensions,
             encoding_format="float",
         )
-        if not hasattr(response, 'data') or not response.data:
+        if not hasattr(response, "data") or not response.data:
             raise RuntimeError("Invalid response from embedding API.")
 
         return response.data[0].embedding
