@@ -13,6 +13,7 @@ import tiktoken
 import google.generativeai as google_ai
 from tqdm import tqdm
 import typing_extensions as typing
+import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -46,8 +47,13 @@ class Record:
     document: str
 
     def to_dict(self) -> dict:
+        """
+        Convert the record to a dictionary.
+
+        :return: A dictionary representation of the record - note that id is a 64-bit integer.
+        """
         return {
-            "id": self.id,
+            "id": np.int64(self.id),
             "vector": self.vector,
             "text": self.text,
             "category": self.category,
@@ -116,7 +122,7 @@ class DatasetGenerator:
 
             for summary in tqdm(summaries, leave=False):
                 record = Record(
-                    id=uuid.uuid4().int,
+                    id=uuid.uuid4().int >> 64, # 64-bit integer
                     vector=self._generate_embedding(summary, self._embedding_dimensions),
                     text=summary,
                     category=current_docs_map[doc].parent.name,
