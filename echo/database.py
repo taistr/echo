@@ -189,6 +189,11 @@ class DatabaseService:
         client.create_collection(self.collection_name, dimension=metadata.get("dimensions"))  # TODO: make safer
 
         # Insert the records
+        data = [record.to_dict() for record in dataset]
+
+        for dict_record in data:
+            dict_record["id"] = np.int64(dict_record["id"])
+            
         client.insert(collection_name=self.collection_name, data=[record.to_dict() for record in dataset])
 
     def _setup_client(self) -> Client:

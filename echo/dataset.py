@@ -53,7 +53,7 @@ class Record:
         :return: A dictionary representation of the record - note that id is a 64-bit integer.
         """
         return {
-            "id": np.int64(self.id),
+            "id": self.id,
             "vector": self.vector,
             "text": self.text,
             "category": self.category,
