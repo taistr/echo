@@ -3,7 +3,7 @@ from pathlib import Path
 import google.generativeai as google_ai
 import os
 import logging
-import typing
+import typing_extensions
 import json
 
 # Models with all required features for PDF summary
@@ -32,7 +32,7 @@ class Summariser(ABC):
 class GoogleAISummariser(Summariser):
     """Summarises PDF documents using the Google AI API."""
 
-    class Summary(typing.TypedDict):
+    class Summary(typing_extensions.TypedDict):
         summary: str
 
     def __init__(self, model: str, api_key: str | None = None) -> None:
@@ -82,7 +82,18 @@ class GoogleAISummariser(Summariser):
 
     @property
     def _summary_prompt(self) -> str:
-        return (
-            "Summarize the following document into a series of one-sentence summaries. "
-            "Extract the key points. Always use proper nouns and include a subject in each summary."
+        prompt = (
+            "Summarize the following document into a series of one-sentence summaries. Each summary should:\n"
+            "1. Capture a distinct key point or finding.\n"
+            "2. Use proper nouns and include a clear subject.\n"
+            "3. Incorporate specific details such as actions, outcomes, or entities.\n"
+            "4. Avoid vague or abstract language.\n"
+            "5. Use active voice and be no longer than 20 words.\n\n"
+            "For example:\n\n"
+            "BAD: This work investigates the extent to which LLMs used in such embodied contexts can reason over sources of feedback provided\n"
+            "through natural language, without any additional training.\n\n"
+            "GOOD: Large Language Models (LLMs) can be applied to domains beyond natural language processing, such as planning and interaction\n"
+            "for robots.\n\n"
+            "Now, please summarize the document accordingly."
         )
+        return prompt

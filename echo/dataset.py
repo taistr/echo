@@ -1,265 +1,204 @@
-import os
+from enum import Enum
+from typing import Any
+from .utils.summariser import GoogleAISummariser
+from .utils.embedder import OpenAIEmbedder
+from pathlib import Path
+import logging
+import hashlib
+from typing import Callable
+from dataclasses import dataclass
+import numpy as np
+import uuid
+from datetime import datetime, timezone
 import argparse
 import json
 import logging
-import hashlib
-import uuid
-from pathlib import Path
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import List, Tuple, Dict
-import openai
-import tiktoken
-import google.generativeai as google_ai
-from tqdm import tqdm
-import typing_extensions as typing
-import numpy as np
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+@dataclass
+class Summary:
+    id: np.int64
+    text: str
+    vector: list[float]
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": int(self.id),
+            "text": self.text,
+            "vector": self.vector,
+        }
 
-# Type hint for summary dict structure
+@dataclass
+class Document:
+    name: str
+    tags: list[str]
+    hash: str
+    summaries: list[Summary]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "tags": self.tags,
+            "hash": self.hash,
+            "summaries": [summary.to_dict() for summary in self.summaries],
+        }
+
 @dataclass
 class Metadata:
-    """Represents metadata for the dataset."""
-
     date: str
     dimensions: int
     embedding_model: str
-
-    def to_dict(self) -> dict:
+    
+    def to_dict(self) -> dict[str, Any]:
         return {
             "date": self.date,
             "dimensions": self.dimensions,
             "embedding_model": self.embedding_model,
         }
 
-
 @dataclass
-class Record:
-    """Represents a single record in the dataset."""
+class Dataset:
+    metadata: Metadata
+    documents: list[Document]
 
-    id: int
-    vector: List[float]
-    text: str
-    category: str
-    document: str
-
-    def to_dict(self) -> dict:
-        """
-        Convert the record to a dictionary.
-
-        :return: A dictionary representation of the record - note that id is a 64-bit integer.
-        """
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the dataset to a dictionary."""
         return {
-            "id": self.id,
-            "vector": self.vector,
-            "text": self.text,
-            "category": self.category,
-            "document": self.document,
+            "metadata": self.metadata.to_dict(),
+            "documents": [doc.to_dict() for doc in self.documents],
         }
-
-
-class Summary(typing.TypedDict):
-    summary: str
-
 
 class DatasetGenerator:
-    """Generates a dataset for the MSM vector database."""
+    """Generates a dataset from a directory of documentation for the MSM's agents to access during operation."""
 
-    def __init__(
-        self,
-        google_summary_model: str = "gemini-1.5-flash-latest",
-        openai_embedding_model: str = "text-embedding-3-small",
-        dimensions: int = 1024,
-    ) -> None:
-        self._logger = logging.getLogger(__name__)
+    def __init__(self):
+        self._summariser = GoogleAISummariser(
+            model="gemini-1.5-flash",
+        )
 
-        # Configure APIs
-        google_ai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-        self._summary_model = google_ai.GenerativeModel(model_name=google_summary_model)
+        self._embedder = OpenAIEmbedder(
+            embedding_model="text-embedding-3-small",
+        )
 
-        self._embedding_model = openai_embedding_model
-        self._embedding_dimensions = dimensions
-        self._encoding = tiktoken.encoding_for_model(self._embedding_model)
-        self._client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        self._logger = logging.getLogger(self.__class__.__name__)
 
-    def generate(self, directory_path: Path | str) -> None:
+    def generate(self, directory_path: Path) -> dict:
         """
-        Generate the dataset from a directory of documents.
+        Generate a dataset from the given directory.
 
-        :param directory_path: The path to the directory containing subdirectories and documents.
+        :param directory_path: The path to the directory containing the documentation.
+        :return: A dataset of documentation records.
         """
-        dataset_directory_path = Path(directory_path)
-        if not dataset_directory_path.exists():
-            raise FileNotFoundError(f"Dataset path '{directory_path}' not found.")
+        if not isinstance(directory_path, Path):
+            self._logger.warning(f"Converting directory path to Path: {directory_path}")
+            directory_path = Path(directory_path)
 
-        # Load the existing dataset
-        dataset_file_path = dataset_directory_path / "dataset.json"
-        old_metadata, old_dataset = self._load_dataset(dataset_file_path)
-
-        old_docs = {record.document for record in old_dataset}
-        current_docs_map = self._map_documents(dataset_directory_path)
-        current_docs = set(current_docs_map.keys())
-
-        new_dataset: List[Record] = []
-        if (
-            old_metadata
-            and old_metadata["dimensions"] == self._embedding_dimensions
-            and old_metadata["embedding_model"] == self._embedding_model
-        ):
-            common_docs = current_docs.intersection(old_docs)
-            new_dataset.extend(record for record in old_dataset if record.document in common_docs)
-            new_docs = current_docs - old_docs
-        else:
-            new_docs = current_docs
-
-        # Generate embeddings for new documents
-        for doc in tqdm(new_docs):
-            self._logger.info(f"Generating summaries for document: %", doc)
-            summaries = self._generate_summaries(current_docs_map[doc])
-
-            for summary in tqdm(summaries, leave=False):
-                record = Record(
-                    id=uuid.uuid4().int >> 64, # 64-bit integer
-                    vector=self._generate_embedding(summary, self._embedding_dimensions),
-                    text=summary,
-                    category=current_docs_map[doc].parent.name,
-                    document=doc,
+        if not directory_path.exists():
+            raise FileNotFoundError(f"Directory path '{directory_path}' not found.")
+        
+        # Get a list of all PDF files in the directory
+        pdf_files = list(directory_path.rglob("*.pdf"))
+        
+        documents = []
+        for pdf_path in pdf_files:
+            documents.append(
+                Document(
+                    name=pdf_path.name,
+                    tags=self.get_directories(pdf_path, directory_path),
+                    hash=self.hash_file(pdf_path, hashlib.sha256),
+                    summaries=self.generate_summaries(pdf_path),
                 )
-                new_dataset.append(record)
+            )
 
-        # Add metadata and save dataset
+        # Generate metadata for the dataset
         metadata = Metadata(
             date=datetime.now(timezone.utc).isoformat(),
-            dimensions=self._embedding_dimensions,
-            embedding_model=self._embedding_model,
-        )
-        dataset = {
-            "metadata": metadata.to_dict(),
-            "data": [record.to_dict() for record in new_dataset],
-        }
-
-        with open(dataset_file_path, "w") as fh:
-            json.dump(dataset, fh, indent=4)
-
-    def _generate_summaries(self, pdf_path: Path) -> List[str]:
-        """
-        Generate summaries from a PDF document.
-
-        :param pdf_path: The path to the PDF document.
-        :return: A list of summaries as strings.
-        """
-        pdf_file_path = Path(pdf_path)
-        if not pdf_file_path.exists():
-            raise FileNotFoundError(f"PDF file '{pdf_path}' not found.")
-
-        self._logger.debug(f"Uploading PDF file: {pdf_file_path}")
-        summary_pdf = google_ai.upload_file(str(pdf_file_path))
-
-        self._logger.debug("Generating summaries for the PDF file...")
-        response = self._summary_model.generate_content(
-            [self._summary_prompt, summary_pdf],
-            generation_config=google_ai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=list[Summary],
-            ),
-            request_options={"timeout": 120},
+            dimensions=self._embedder.dimensions,
+            embedding_model=self._embedder.embedding_model,
         )
 
-        google_ai.delete_file(summary_pdf)
-
-        summaries = json.loads(response.text)
-        return [summary["summary"] for summary in summaries]
-
-    def _generate_embedding(self, text: str, dimensions: int) -> List[float]:
-        """
-        Generate an embedding vector for a text string.
-
-        :param text: The text to generate the embedding for.
-        :param dimensions: The embedding dimension size.
-        :return: A list of floats representing the embedding vector.
-        """
-        if not text.strip():
-            raise ValueError("Input text must be a non-empty string.")
-
-        if len(self._encoding.encode(text)) > 8191:
-            raise ValueError("Input text is too long for embedding model.")
-
-        response = self._client.embeddings.create(
-            model=self._embedding_model,
-            input=text,
-            dimensions=dimensions,
-            encoding_format="float",
+        dataset = Dataset( 
+            metadata=metadata,
+            documents=documents,
         )
-        if not hasattr(response, "data") or not response.data:
-            raise RuntimeError("Invalid response from embedding API.")
 
-        return response.data[0].embedding
+        return dataset.to_dict()
 
-    def _map_documents(self, dataset_dir_path: Path) -> Dict[str, Path]:
+    def generate_summaries(self, pdf_path: Path) -> list[Summary]:
         """
-        Map document file paths to their SHA256 hashes.
-
-        :param dataset_dir_path: The directory path containing the documents.
-        :return: A dictionary mapping file hashes to file paths.
+        Generate summaries for the given PDF file.
+        
+        :param pdf_path: The path to the PDF file.
+        :return: A list of summary objects.
         """
-        document_map = {}
-        for file_path in dataset_dir_path.rglob("*.pdf"):
-            document_hash = self._file_hash(file_path)
-            document_map[document_hash] = file_path
+        if not isinstance(pdf_path, Path):
+            raise TypeError(f"Invalid PDF path: {pdf_path}")
 
-        return document_map
+        summaries = self._summariser.summarise(pdf_path)
 
-    @property
-    def _summary_prompt(self) -> str:
-        return (
-            "Summarize the following document into a series of one-sentence summaries. "
-            "Extract the key points. Always use proper nouns and include a subject in each summary."
-        )
+        summary_objects = []
+
+        for summary in summaries:
+            summary = Summary(
+                id=self.generate_id(),
+                text=summary,
+                vector=self._embedder.embed(summary),
+            )
+            summary_objects.append(summary)
+
+        return summary_objects
 
     @staticmethod
-    def _load_dataset(file_path: Path) -> Tuple[dict, List[Record]]:
-        """
-        Load a dataset from a JSON file.
+    def generate_id() -> np.int64:
+        """Generate a unique ID for a document."""
+        uuid_int = (uuid.uuid4().int >> 64) & 0xFFFFFFFFFFFFFFFF
 
-        :param file_path: The path to the dataset JSON file.
-        :return: A tuple containing the metadata and dataset records.
-        """
-        if not file_path.exists():
-            return {}, []
+        if uuid_int >= 0x8000000000000000:
+            uuid_int -= 0x10000000000000000
 
-        with open(file_path) as fh:
-            json_data = json.load(fh)
-
-        metadata = json_data.get("metadata", {})
-        data = json_data.get("data", [])
-        records = [Record(**record) for record in data]
-
-        return metadata, records
+        return np.int64(uuid_int)
+        
 
     @staticmethod
-    def _file_hash(file_path: Path, algorithm: str = "sha256") -> str:
-        """
-        Generate a hash for a file using the specified algorithm.
+    def hash_file(file_path: Path, hash_fn: Callable) -> str:
+        """Hashes the contents of a file."""
+        if not isinstance(file_path, Path):
+            raise TypeError(f"Invalid file path: {file_path}")
 
-        :param file_path: The path to the file.
-        :param algorithm: The hashing algorithm to use.
-        :return: The file's hash as a string.
-        """
-        hash_function = hashlib.new(algorithm)
-        with open(file_path, "rb") as fh:
-            while chunk := fh.read(8192):
-                hash_function.update(chunk)
+        with open(file_path, "rb") as file:
+            file_hash = hashlib.file_digest(file, hash_fn).hexdigest()
 
-        return hash_function.hexdigest()
+        return file_hash
+    
+    @staticmethod
+    def get_directories(file_path: Path, base_path: Path) -> list[str]:
+        """Get a list of all directories in the given directory."""
+        if not isinstance(file_path, Path):
+            raise TypeError(f"Invalid file path: {file_path}")
+
+        if not isinstance(base_path, Path):
+            raise TypeError(f"Invalid base path: {base_path}")
+
+        relative_path = file_path.relative_to(base_path)
+        
+        return list(relative_path.parent.parts)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate a dataset for the MSM project.")
-    parser.add_argument("directory", help="The directory containing the dataset subdirectories and documents")
+    parser = argparse.ArgumentParser(description="Generate a dataset from a directory of documentation.")
+    parser.add_argument("directory", help="The directory containing the documentation.")
+    parser.add_argument("--output", help="The output file for the dataset.", required=True)
     args = parser.parse_args()
 
-    generator = DatasetGenerator()
-    generator.generate(args.directory)
+    dataset = DatasetGenerator().generate(Path(args.directory))
+
+    if args.output:
+        with open(args.output, "w") as file:
+            json.dump(dataset, file, indent=4)
+
+    print(f"Dataset generated and saved to {args.output}")
+
+
+    
+
+
+
