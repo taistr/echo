@@ -66,6 +66,35 @@ class Dataset:
             "metadata": self.metadata.to_dict(),
             "documents": [doc.to_dict() for doc in self.documents],
         }
+    
+    @classmethod
+    def from_dict(cls, dataset_dict: dict[str, Any]):
+        """Load a dataset from a dictionary."""
+        try:
+            metadata = Metadata(
+                date=dataset_dict["metadata"]["date"],
+                dimensions=dataset_dict["metadata"]["dimensions"],
+                embedding_model=dataset_dict["metadata"]["embedding_model"],
+            )
+
+            documents = [
+                Document(
+                    name=doc["name"],
+                    tags=doc["tags"],
+                    hash=doc["hash"],
+                    summaries=[
+                        Summary(
+                            id=summary["id"],
+                            text=summary["text"],
+                            vector=summary["vector"],
+                        ) for summary in doc["summaries"]
+                    ]
+                ) for doc in dataset_dict["documents"]
+            ]
+
+            return cls(metadata=metadata, documents=documents)
+        except KeyError as e:
+            raise ValueError(f"Invalid dataset: {e}")
 
 class DatasetGenerator:
     """Generates a dataset from a directory of documentation for the MSM's agents to access during operation."""
@@ -157,7 +186,6 @@ class DatasetGenerator:
 
         return np.int64(uuid_int)
         
-
     @staticmethod
     def hash_file(file_path: Path, hash_fn: Callable) -> str:
         """Hashes the contents of a file."""
@@ -181,6 +209,7 @@ class DatasetGenerator:
         relative_path = file_path.relative_to(base_path)
         
         return list(relative_path.parent.parts)
+
 
 
 if __name__ == "__main__":

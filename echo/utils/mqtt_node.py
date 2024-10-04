@@ -29,7 +29,7 @@ class MQTTSubscription:
 
 class MQTTNode:
     """
-    Abstract class for an MQTT client node.
+    Abstract class for an MQTT client node. 
 
     :param client_id: The client ID for the MQTT node.
     :param broker_host: The host of the MQTT broker.
@@ -48,7 +48,15 @@ class MQTTNode:
             broker_port: int = 1883, 
             publish_threads: int = 8
         ) -> None:
-
+        """
+        Initialize the MQTT node. Sets up an MQTT client, starts a Paho network loop and connects to the broker.
+        Additionally, initialises the a thread pool executor for servicing received messages.
+        
+        :param client_id: The client ID for the MQTT node.
+        :param broker_host: The host of the MQTT broker (default: "localhost").
+        :param broker_port: The port of the MQTT broker (default: 1883).
+        :param publish_threads: The number of threads to use for servicing received messages (default: 8).
+        """
         self._logger = logging.getLogger(self.__class__.__name__)
 
         # Set up client
@@ -80,7 +88,6 @@ class MQTTNode:
             self._client.disconnect()
         self._client.loop_stop()
 
-    
     @abstractmethod
     def _subscriptions(self) -> List[MQTTSubscription]:
         """
