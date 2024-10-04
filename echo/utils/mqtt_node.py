@@ -10,17 +10,6 @@ import logging
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 
-def mqttcallback(callback: Callable[[MQTTMessage], None]) -> Callable[[Client, Any, MQTTMessage], None]:
-    """
-    Decorator for MQTT callbacks to ensure the correct signature is used.
-    
-    :param callback: The callback function to wrap.
-    """
-    def wrapper(client: Client, userdata: Any, message: MQTTMessage) -> None:
-        callback(message)
-
-    return wrapper
-
 @dataclass
 class MQTTSubscription:
     topic: str
@@ -91,7 +80,7 @@ class MQTTNode:
     @abstractmethod
     def _subscriptions(self) -> List[MQTTSubscription]:
         """
-        Get the subscriptions for the MQTT node.
+        Provides a list of MQTTSubscriptions which are used for automatically subscribing to when initialised.
 
         :return: A list of MQTT subscriptions.
         """

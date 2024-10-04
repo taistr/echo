@@ -1,9 +1,11 @@
-from .utils.mqtt_node import MQTTNode, mqttcallback, MQTTSubscription
-from .utils.embedder import OpenAIEmbedder
+from echo.utils.mqtt_node import MQTTNode, MQTTSubscription
+from echo.utils.embedder import OpenAIEmbedder
+from paho.mqtt.client import MQTTMessage, Client
 from paho.mqtt.subscribeoptions import SubscribeOptions
 from datetime import datetime
 import lancedb
 from lancedb.pydantic import LanceModel, Vector
+from pydantic import BaseModel
 from pathlib import Path
 from xdg_base_dirs import xdg_data_home
 from enum import Enum
@@ -11,6 +13,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 import yaml
+import signal
+import logging
 
 from echo.dataset import Dataset
 
@@ -21,7 +25,7 @@ DEFAULT_METADATA_NAME = "metadata.yaml"
 
 class DatabaseTables(Enum):
     DOCUMENTATION = "documentation"
-    MEMORIES = "memories"
+    MEMORIES = "memories" 
 
 @dataclass
 class MetadataFile:
@@ -48,15 +52,18 @@ class DatabaseService(MQTTNode):
             database_directory: Path = DEFAULT_DATABASE_DIRECTORY, # will expect a dataset.json file at the location as well
         ) -> None:
         super().__init__(client_id="database-service")
-        pass
+        
+        self._db_connection = self._initialise_database(database_directory)
+
+        self._logger.info("Database Service is online!")
 
     def _initialise_database(self, database_directory: Path) -> lancedb.DBConnection:
         """
         Initialise the database connection.
         """
 
-        if not database_directory.exists():
-            dataset_path = database_directory.parent / DEFAULT_DATASET_NAME
+        if not (database_directory / DEFAULT_DATABASE_NAME).exists() or not (database_directory / DEFAULT_METADATA_NAME).exists():
+            dataset_path = database_directory / DEFAULT_DATASET_NAME
             if dataset_path.exists():
                 # load the dataset
                 dataset: Dataset = self.load_dataset(dataset_path)
@@ -107,12 +114,19 @@ class DatabaseService(MQTTNode):
 
     def _subscriptions(self) -> list[MQTTSubscription]:
         return [
-            # MQTTSubscription(
-            #     topic="assistant/database/documentation/query", 
-            #     options=SubscribeOptions(qos=1),
-            # ),
+            MQTTSubscription(
+                topic="assistant/database/documentation/query", 
+                options=SubscribeOptions(qos=1),
+                callback=self._query_callback
+            ),
         ]
-    
+
+    def _query_callback(self, client: Client, userdata: Any, message: MQTTMessage) -> None:
+        """
+        Callback for when a query message is received.
+        """
+        self._logger.info(f"Received query message: {message.payload}")
+
     @staticmethod
     def load_dataset(dataset_path: Path) -> Dataset:
         """
@@ -161,6 +175,7 @@ class DatabaseService(MQTTNode):
                     schema(
                         id=int(summary.id), #TODO: check this
                         tags=document.tags,
+                        title=document.name,
                         vector=summary.vector,
                         text=summary.text,
                     )
@@ -193,20 +208,21 @@ class DatabaseService(MQTTNode):
         class Excerpt(LanceModel):
             id: int
             tags: list[str]
+            title: str
             vector: Vector(dimensions) # type: ignore
             text: str
 
-            def to_dict(self) -> dict[str, Any]:
-                return {
-                    "id": self.id,
-                    "tags": self.tags,
-                    "vector": list(self.vector),
-                    "text": self.text,
-                }
-
         return Excerpt
     
-    
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    DatabaseService()
+
+    try:
+        signal.pause()
+    except KeyboardInterrupt:
+        pass
+
 
 
 
