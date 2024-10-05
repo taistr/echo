@@ -16,6 +16,7 @@ GOOGLE_SUMMARY_MODELS = {
     },
 }
 
+
 class Summariser(ABC):
     """Generic class for summarising PDF Documents."""
 
@@ -23,11 +24,12 @@ class Summariser(ABC):
     def summarise(self, pdf_file_path: Path, timeout: float) -> str:
         """
         Generate a summary for the given text.
-        
+
         :param text: The text to summarise.
         :param timeout: The maximum time to wait for the summary to be generated.
         """
         pass
+
 
 class GoogleAISummariser(Summariser):
     """Summarises PDF documents using the Google AI API."""
@@ -39,29 +41,29 @@ class GoogleAISummariser(Summariser):
         self._logger = logging.getLogger(self.__class__.__name__)
         if model not in GOOGLE_SUMMARY_MODELS.keys():
             raise ValueError(f"Invalid Google AI summarisation model: {model}")
-        
+
         try:
             google_ai.configure(api_key=api_key or os.environ["GOOGLE_API_KEY"])
         except KeyError:
             raise ValueError("No API key was provided or available as an environment variable.")
-        
+
         self.model_name = model
         self._summary_model = google_ai.GenerativeModel(model_name=model)
 
     def summarise(self, pdf_file_path: Path, timeout: float = 120) -> list[str]:
         """
         Generate a summary for the given PDF file.
-        
+
         :param pdf_file_path: The path to the PDF file to summarise.
         :param timeout: The maximum time to wait for the summary to be generated.
         :param max_attempts: The maximum number of attempts to generate the summary.
         """
         if not pdf_file_path.exists():
             raise FileNotFoundError(f"PDF file '{pdf_file_path}' not found.")
-        
+
         if timeout <= 0:
             raise ValueError("Timeout must be a positive number.")
-        
+
         self._logger.debug(f"Uploading PDF file '{pdf_file_path}' ...")
         pdf_reference = google_ai.upload_file(str(pdf_file_path))
 

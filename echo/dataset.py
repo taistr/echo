@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 
+
 @dataclass
 class Summary:
     id: np.int64
@@ -26,6 +27,7 @@ class Summary:
             "text": self.text,
             "vector": self.vector,
         }
+
 
 @dataclass
 class Document:
@@ -42,18 +44,20 @@ class Document:
             "summaries": [summary.to_dict() for summary in self.summaries],
         }
 
+
 @dataclass
 class Metadata:
     date: str
     dimensions: int
     embedding_model: str
-    
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "date": self.date,
             "dimensions": self.dimensions,
             "embedding_model": self.embedding_model,
         }
+
 
 @dataclass
 class Dataset:
@@ -66,7 +70,7 @@ class Dataset:
             "metadata": self.metadata.to_dict(),
             "documents": [doc.to_dict() for doc in self.documents],
         }
-    
+
     @classmethod
     def from_dict(cls, dataset_dict: dict[str, Any]):
         """Load a dataset from a dictionary."""
@@ -87,14 +91,17 @@ class Dataset:
                             id=summary["id"],
                             text=summary["text"],
                             vector=summary["vector"],
-                        ) for summary in doc["summaries"]
-                    ]
-                ) for doc in dataset_dict["documents"]
+                        )
+                        for summary in doc["summaries"]
+                    ],
+                )
+                for doc in dataset_dict["documents"]
             ]
 
             return cls(metadata=metadata, documents=documents)
         except KeyError as e:
             raise ValueError(f"Invalid dataset: {e}")
+
 
 class DatasetGenerator:
     """Generates a dataset from a directory of documentation for the MSM's agents to access during operation."""
@@ -123,10 +130,10 @@ class DatasetGenerator:
 
         if not directory_path.exists():
             raise FileNotFoundError(f"Directory path '{directory_path}' not found.")
-        
+
         # Get a list of all PDF files in the directory
         pdf_files = list(directory_path.rglob("*.pdf"))
-        
+
         documents = []
         for pdf_path in pdf_files:
             documents.append(
@@ -145,7 +152,7 @@ class DatasetGenerator:
             embedding_model=self._embedder.embedding_model,
         )
 
-        dataset = Dataset( 
+        dataset = Dataset(
             metadata=metadata,
             documents=documents,
         )
@@ -155,7 +162,7 @@ class DatasetGenerator:
     def generate_summaries(self, pdf_path: Path) -> list[Summary]:
         """
         Generate summaries for the given PDF file.
-        
+
         :param pdf_path: The path to the PDF file.
         :return: A list of summary objects.
         """
@@ -185,7 +192,7 @@ class DatasetGenerator:
             uuid_int -= 0x10000000000000000
 
         return np.int64(uuid_int)
-        
+
     @staticmethod
     def hash_file(file_path: Path, hash_fn: Callable) -> str:
         """Hashes the contents of a file."""
@@ -196,7 +203,7 @@ class DatasetGenerator:
             file_hash = hashlib.file_digest(file, hash_fn).hexdigest()
 
         return file_hash
-    
+
     @staticmethod
     def get_directories(file_path: Path, base_path: Path) -> list[str]:
         """Get a list of all directories in the given directory."""
@@ -207,9 +214,8 @@ class DatasetGenerator:
             raise TypeError(f"Invalid base path: {base_path}")
 
         relative_path = file_path.relative_to(base_path)
-        
-        return list(relative_path.parent.parts)
 
+        return list(relative_path.parent.parts)
 
 
 if __name__ == "__main__":
@@ -225,9 +231,3 @@ if __name__ == "__main__":
             json.dump(dataset, file, indent=4)
 
     print(f"Dataset generated and saved to {args.output}")
-
-
-    
-
-
-

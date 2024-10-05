@@ -5,7 +5,6 @@ from paho.mqtt.subscribeoptions import SubscribeOptions
 from datetime import datetime
 import lancedb
 from lancedb.pydantic import LanceModel, Vector
-from pydantic import BaseModel
 from pathlib import Path
 from xdg_base_dirs import xdg_data_home
 from enum import Enum
@@ -17,15 +16,64 @@ import signal
 import logging
 
 from echo.dataset import Dataset
+from echo.utils.mqtt_messages import Message
 
 DEFAULT_DATABASE_DIRECTORY = xdg_data_home() / "echo" / "database"
 DEFAULT_DATABASE_NAME = "lancedb"
 DEFAULT_DATASET_NAME = "dataset.json"
 DEFAULT_METADATA_NAME = "metadata.yaml"
 
+
+class QueryType(Enum):
+    SEMANTIC = "semantic"  # vector search
+    KEYWORD = "keyword"
+    HYBRID = "hybrid"
+
+
+class Query(Message):
+    search_text: str
+    tags: list[str] | None
+    limit: int
+    type: QueryType
+
+    def __init__(
+        self,
+        search_text: str,
+        tags: list[str] | None = None,
+        limit: int = 10,
+        query_type: QueryType = QueryType.SEMANTIC,
+        **kwargs,
+    ) -> None:
+        """
+        Create a new query message.
+
+        :param search_text: The text to search for.
+        :param tags: The tags to search for.
+        :param limit: The maximum number of results to return.
+        :param query_type: The type of query to perform.
+        """
+        self.search_text = search_text
+        self.tags = tags
+        self.limit = limit
+        self.query_type = query_type
+
+    @classmethod
+    def from_json(cls, json: dict) -> "Query":
+        return cls(**json)
+
+    def to_json(self) -> dict:
+        return {
+            "search_text": self.search_text,
+            "tags": self.tags,
+            "limit": self.limit,
+            "type": self.query_type.value,
+        }
+
+
 class DatabaseTables(Enum):
     DOCUMENTATION = "documentation"
-    MEMORIES = "memories" 
+    MEMORIES = "memories"
+
 
 @dataclass
 class MetadataFile:
@@ -42,17 +90,18 @@ class MetadataFile:
             "documents": self.documents,
         }
 
+
 class DatabaseService(MQTTNode):
     """
     Service for managing the Echo database. Exposes a set of MQTT topics for interfacing with the database.
     """
 
     def __init__(
-            self,
-            database_directory: Path = DEFAULT_DATABASE_DIRECTORY, # will expect a dataset.json file at the location as well
-        ) -> None:
+        self,
+        database_directory: Path = DEFAULT_DATABASE_DIRECTORY,  # will expect a dataset.json file at the location as well
+    ) -> None:
         super().__init__(client_id="database-service")
-        
+
         self._db_connection = self._initialise_database(database_directory)
 
         self._logger.info("Database Service is online!")
@@ -62,12 +111,15 @@ class DatabaseService(MQTTNode):
         Initialise the database connection.
         """
 
-        if not (database_directory / DEFAULT_DATABASE_NAME).exists() or not (database_directory / DEFAULT_METADATA_NAME).exists():
+        if (
+            not (database_directory / DEFAULT_DATABASE_NAME).exists()
+            or not (database_directory / DEFAULT_METADATA_NAME).exists()
+        ):
             dataset_path = database_directory / DEFAULT_DATASET_NAME
             if dataset_path.exists():
                 # load the dataset
                 dataset: Dataset = self.load_dataset(dataset_path)
-                
+
                 # initialise the database
                 database_connection = lancedb.connect(database_directory / DEFAULT_DATABASE_NAME)
 
@@ -109,15 +161,15 @@ class DatabaseService(MQTTNode):
 
                     # Update the metadata file
                     self.create_metadata_file(dataset, database_directory)
-            
-        return database_connection   
+
+        return database_connection
 
     def _subscriptions(self) -> list[MQTTSubscription]:
         return [
             MQTTSubscription(
-                topic="assistant/database/documentation/query", 
+                topic="assistant/database/documentation/query",
                 options=SubscribeOptions(qos=1),
-                callback=self._query_callback
+                callback=self._query_callback,
             ),
         ]
 
@@ -134,15 +186,15 @@ class DatabaseService(MQTTNode):
         """
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset not found at {dataset_path}")
-        
+
         try:
             with open(dataset_path, "r") as file:
                 dataset_dict = json.load(file)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in dataset file: {e}")
-        
+
         return Dataset.from_dict(dataset_dict)
-    
+
     @staticmethod
     def load_metadata(metadata_path: Path) -> MetadataFile:
         """
@@ -150,15 +202,15 @@ class DatabaseService(MQTTNode):
         """
         if not metadata_path.exists():
             raise FileNotFoundError(f"Metadata file not found at {metadata_path}")
-        
+
         try:
             with open(metadata_path, "r") as file:
                 metadata_dict = yaml.safe_load(file)
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML in metadata file: {e}")
-        
+
         return MetadataFile(**metadata_dict)
-    
+
     def create_data(self, dataset: Dataset) -> list[Any]:
         """
         Create the data for the database from a dataset.
@@ -173,7 +225,7 @@ class DatabaseService(MQTTNode):
             for summary in document.summaries:
                 data.append(
                     schema(
-                        id=int(summary.id), #TODO: check this
+                        id=int(summary.id),  # TODO: check this
                         tags=document.tags,
                         title=document.name,
                         vector=summary.vector,
@@ -182,7 +234,7 @@ class DatabaseService(MQTTNode):
                 )
 
         return data
-    
+
     def create_metadata_file(self, dataset: Dataset, dataset_directory: Path):
         """
         Create the metadata for the database from a dataset.
@@ -209,11 +261,12 @@ class DatabaseService(MQTTNode):
             id: int
             tags: list[str]
             title: str
-            vector: Vector(dimensions) # type: ignore
+            vector: Vector(dimensions)  # type: ignore
             text: str
 
         return Excerpt
-    
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     DatabaseService()
@@ -222,17 +275,3 @@ if __name__ == "__main__":
         signal.pause()
     except KeyboardInterrupt:
         pass
-
-
-
-
-
-
-
-
-
-    
-
-    
-
-

@@ -10,15 +10,17 @@ import logging
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 
+
 @dataclass
 class MQTTSubscription:
     topic: str
     options: SubscribeOptions
-    callback : Callable[[Client, Any, MQTTMessage], None]
+    callback: Callable[[Client, Any, MQTTMessage], None]
+
 
 class MQTTNode:
     """
-    Abstract class for an MQTT client node. 
+    Abstract class for an MQTT client node.
 
     :param client_id: The client ID for the MQTT node.
     :param broker_host: The host of the MQTT broker.
@@ -31,16 +33,16 @@ class MQTTNode:
     _service_executor: ThreadPoolExecutor
 
     def __init__(
-            self, 
-            client_id: str, 
-            broker_host: str = "localhost", 
-            broker_port: int = 1883, 
-            publish_threads: int = 8
-        ) -> None:
+        self,
+        client_id: str,
+        broker_host: str = "localhost",
+        broker_port: int = 1883,
+        publish_threads: int = 8,
+    ) -> None:
         """
         Initialize the MQTT node. Sets up an MQTT client, starts a Paho network loop and connects to the broker.
         Additionally, initialises the a thread pool executor for servicing received messages.
-        
+
         :param client_id: The client ID for the MQTT node.
         :param broker_host: The host of the MQTT broker (default: "localhost").
         :param broker_port: The port of the MQTT broker (default: 1883).
@@ -64,7 +66,7 @@ class MQTTNode:
 
         self._client.loop_start()
         self._client.connect(
-            host=broker_host, 
+            host=broker_host,
             port=broker_port,
         )
 
@@ -105,20 +107,16 @@ class MQTTNode:
         """
         rc_name = reason_code.getName()
         if reason_code.is_failure:
-            self._logger.error(
-                f"Failed to connect to broker with reason code {reason_code.getId(rc_name)} ({rc_name})"
-            )
+            self._logger.error(f"Failed to connect to broker with reason code {reason_code.getId(rc_name)} ({rc_name})")
             return
 
-        self._logger.info(
-            f"Connected to broker with reason code {reason_code.getId(rc_name)} ({rc_name})"
-        )
+        self._logger.info(f"Connected to broker with reason code {reason_code.getId(rc_name)} ({rc_name})")
         for subscription in self._subscriptions():
             self._logger.info(f"Subscribing to topic: {subscription.topic}")
             self._client.subscribe(
-                topic=subscription.topic, 
+                topic=subscription.topic,
                 options=subscription.options,
-            )         
+            )
 
     @abstractmethod
     def _on_disconnect_callback(
@@ -162,11 +160,11 @@ class MQTTNode:
 
     @abstractmethod
     def _on_subscribe_callback(
-        self, 
-        client: Client, 
-        user_data: Any, 
-        message_id: int, 
-        granted_qos: List[ReasonCode], 
+        self,
+        client: Client,
+        user_data: Any,
+        message_id: int,
+        granted_qos: List[ReasonCode],
         properties: Properties,
     ) -> None:
         """
@@ -179,5 +177,3 @@ class MQTTNode:
         :param properties: The properties returned by the broker
         """
         pass
-
-    

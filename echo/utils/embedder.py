@@ -19,8 +19,10 @@ OPENAI_EMBEDDING_MODELS = {
 }
 DEFAULT_DIMENSIONS = 1024
 
+
 class Embedder(ABC):
     """Generic class for embedding text."""
+
     def __init__(self, dimensions: int, **kwargs: Any):
         self.dimensions = dimensions
 
@@ -28,22 +30,29 @@ class Embedder(ABC):
     def embed(self, text: str, timeout: float) -> List[float]:
         """
         Generate an embedding for the given text.
-        
+
         :param text: The text to embed.
         :param timeout: The maximum time to wait for the embedding to be generated.
         """
         pass
 
+
 class OpenAIEmbedder(Embedder):
     """
     Embedder implementation that uses OpenAI's embedding models.
-    
+
     :param embedding_model: The OpenAI embedding model to use.
     :param dimensions: The number of dimensions for the embedding.
     :param api_key: The OpenAI API key to use.
     """
 
-    def __init__(self, embedding_model: str, dimensions: int = DEFAULT_DIMENSIONS, api_key: str | None = None, **kwargs: Any):
+    def __init__(
+        self,
+        embedding_model: str,
+        dimensions: int = DEFAULT_DIMENSIONS,
+        api_key: str | None = None,
+        **kwargs: Any,
+    ):
         """Initialize the OpenAIEmbedder with a model and API key."""
         if embedding_model not in OPENAI_EMBEDDING_MODELS.keys():
             raise ValueError(f"Invalid OpenAI embedding model: {embedding_model}")
@@ -57,7 +66,7 @@ class OpenAIEmbedder(Embedder):
     def embed(self, text: str, timeout: float = 120) -> List[float]:
         """
         Generate an embedding for the given text using the OpenAI API.
-        
+
         :param text: The text to embed.
         :param timeout: The maximum time to wait for the embedding to be generated.
         """
