@@ -5,7 +5,7 @@ from enum import Enum
 
 class Message(ABC):
     @abstractmethod
-    def from_json(cls, json: dict) -> "Message":
+    def from_dict(cls, dict_object: dict) -> "Message":
         """
         Create a new message from a JSON object.
 
@@ -16,7 +16,7 @@ class Message(ABC):
         pass
 
     @abstractmethod
-    def to_json(self) -> dict:
+    def to_dict(self) -> dict:
         """
         Convert the message to a JSON object.
 

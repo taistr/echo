@@ -27,7 +27,7 @@ class Embedder(ABC):
         self.dimensions = dimensions
 
     @abstractmethod
-    def embed(self, text: str, timeout: float) -> List[float]:
+    def embed(self, text: str, timeout: float) -> List[float] | None:
         """
         Generate an embedding for the given text.
 
@@ -63,7 +63,7 @@ class OpenAIEmbedder(Embedder):
         self._client = openai.OpenAI(api_key=api_key or os.environ["OPENAI_API_KEY"])
         self._encoding = tiktoken.encoding_for_model(self.embedding_model)
 
-    def embed(self, text: str, timeout: float = 120) -> List[float]:
+    def embed(self, text: str, timeout: float) -> List[float] | None:
         """
         Generate an embedding for the given text using the OpenAI API.
 
@@ -88,4 +88,4 @@ class OpenAIEmbedder(Embedder):
             return response.data[0].embedding
         except (TimeoutError, RuntimeError) as e:
             self._logger.error(f"Error occurred while generating embedding: {e}")
-            return None
+            return
