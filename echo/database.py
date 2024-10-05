@@ -29,8 +29,13 @@ class QueryType(Enum):
     KEYWORD = "keyword"
     HYBRID = "hybrid"
 
+class QueryTable(Enum):
+    DOCUMENTATION = "documentation"
+    MEMORIES = "memories"
+
 
 class Query(Message):
+    table: QueryTable
     search_text: str
     tags: list[str] | None
     limit: int
@@ -38,6 +43,7 @@ class Query(Message):
 
     def __init__(
         self,
+        table: QueryTable,
         search_text: str,
         tags: list[str] | None = None,
         limit: int = 10,
@@ -52,6 +58,7 @@ class Query(Message):
         :param limit: The maximum number of results to return.
         :param query_type: The type of query to perform.
         """
+        self.table = table
         self.search_text = search_text
         self.tags = tags
         self.limit = limit
@@ -59,10 +66,17 @@ class Query(Message):
 
     @classmethod
     def from_json(cls, json: dict) -> "Query":
-        return cls(**json)
+        return cls(
+            table=QueryTable(json["table"]),
+            search_text=json["search_text"],
+            tags=json["tags"],
+            limit=json["limit"],
+            query_type=QueryType(json["type"]),
+        )
 
     def to_json(self) -> dict:
         return {
+            "table": self.table.value,
             "search_text": self.search_text,
             "tags": self.tags,
             "limit": self.limit,
@@ -177,7 +191,56 @@ class DatabaseService(MQTTNode):
         """
         Callback for when a query message is received.
         """
-        self._logger.info(f"Received query message: {message.payload}")
+        self._logger.debug(f"Received query message: {message.payload}")
+
+    def _serve_query(self, message: MQTTMessage) -> None:
+        """
+        Serve a query message.
+        
+        :param message: The query message to serve.
+        """
+        # Check for a response topic and correlation data
+        try: 
+            response_topic = ""
+            correlation_data = ""
+
+            response_topic = message.properties.__getattribute__("response_topic")
+            correlation_data = message.properties.__getattribute__("correlation_data")
+        except AttributeError:
+            self._logger.error(
+                f"Query message missing response topic {response_topic} or correlation data {correlation_data}"
+            )
+            return
+
+        try:
+            payload = message.payload.decode("utf-8")
+        except UnicodeDecodeError as e:
+            self._logger.error(f"Failed to decode query message payload: {e}")
+            # TODO: respond with error
+            return
+        
+        try:
+            query = Query.from_json(json.loads(payload))
+        except json.JSONDecodeError as e:
+            # TODO: respond with error
+            self._logger.error(f"Failed to decode query message JSON: {e}")
+            return
+        
+        # TODO: implement the SQL filter 
+        self._logger.debug(f"Received query: {query}")
+        match query.query_type:
+            case QueryType.SEMANTIC: # TODO
+                results = self._db_connection[query.table.value].search().to_list()
+            case QueryType.KEYWORD: # TODO
+                results = self._db_connection[query.table.value].search(query.search_text)
+            case QueryType.HYBRID: # TODO
+                raise NotImplementedError("Hybrid queries are not yet supported")
+            case _:
+                self._logger.error(f"Invalid query type: {query.query_type}")
+                return
+        self._db_connection[query.table.value].search().to_list()
+        
+
 
     @staticmethod
     def load_dataset(dataset_path: Path) -> Dataset:
